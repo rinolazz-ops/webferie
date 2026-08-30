@@ -3,8 +3,12 @@ header('Content-Type: text/html; charset=utf-8');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['data_ferie'])) {
     
-    $data_inserita = $_POST['data_ferie']; // Formato YYYY-MM-DD
-    $data_iso = $data_inserita . "T22:00:00.000Z";
+    $data_inserita = $_POST['data_ferie']; // Es: "2026-09-26"
+
+    // Conversione data in ora UTC (mezzanotte italiana = 22:00 del giorno prima UTC)
+    $dateObj = new DateTime($data_inserita . ' 00:00:00', new DateTimeZone('Europe/Rome'));
+    $dateObj->setTimezone(new DateTimeZone('UTC'));
+    $data_iso = $dateObj->format('Y-m-d\TH:i:s.000\Z');
 
     // Token JWT (Valido fino al 06/09/2026)
     $jwt_token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJGdWxsVXNlck5hbWUiOiJMQVpaQU5PIFNFVkVSSU5PIiwiRW1haWwiOiJyaW5vbGF6ekBnbWFpbC5jb20iLCJSZWdpc3RyYXRpb25OdW1iZXIiOiIxODgxIiwiRmlzY2FsQ29kZSI6IkxaWlNSTjg1TTE4RzI3M1ciLCJWaXNpYmlsaXR5Ijoie1wiSWRDb21wYW55XCI6XCIxMFwiLFwiSWREZXBhcnRtZW50XCI6XCIyXCIsXCJJZFNlY3RvclwiOlwiM1wiLFwiSWRPcmdhbml6YXRpb25hbFVuaXRcIjpcIkFWX0VYVERPTFwiLFwiSWRSZXNpZGVuY2VcIjpcIjgyNzAxXCJ9IiwibmJmIjoxNzg4MTEyMTQ5LCJleHAiOjE3ODg3MTIxNDksImlhdCI6MTc4ODExMjE0OX0.tW9v0u-O5xtkkAfmDCWjy77BAYidxmgoY-zUqCG4GhE";
@@ -18,39 +22,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['data_ferie'])) {
         "NewRangeDateFrom" => null,
         "NewRangeDateTo" => null,
         "ChoiceSelected" => []
-    ]);
+    ], JSON_UNESCAPED_SLASHES);
 
-    $ch = curl_init('https://frontendmyspriss.avmspa.it/api/RequestApi/SaveRequest');
+    $url = 'https://frontendmyspriss.avmspa.it/api/RequestApi/SaveRequest';
+
+    $ch = curl_init($url);
+
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_POST => true,
         CURLOPT_POSTFIELDS => $payload,
+        CURLOPT_FOLLOWLOCATION => true,     // Segue eventuali redirect del server
+        CURLOPT_POSTREDIR => 3,             // MANTIENE IL METODO POST ANCHE SU REDIRECT (Risolve il 405)
+        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_SSL_VERIFYHOST => false,
         CURLOPT_HTTPHEADER => [
-            'accept: application/json, text/plain, */*',
-            'content-type: application/json',
-            'authorization: Bearer ' . $jwt_token,
-            'origin: https://spriss.avmspa.it',
-            'referer: https://spriss.avmspa.it/',
-            'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/148.0.0.0 Safari/537.36'
+            'Accept: application/json, text/plain, */*',
+            'Content-Type: application/json',
+            'Authorization: Bearer ' . $jwt_token,
+            'Origin: https://spriss.avmspa.it',
+            'Referer: https://spriss.avmspa.it/',
+            'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/148.0.0.0 Safari/537.36'
         ],
     ]);
 
     $response = curl_exec($ch);
     $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $effective_url = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
+    $curl_error = curl_error($ch);
     curl_close($ch);
 
-    // Visualizzazione esito
-    echo "<!DOCTYPE html><html lang='it'><head><meta name='viewport' content='width=device-width, initial-scale=1.0'><style>body{font-family:sans-serif;padding:20px;text-align:center;} .box{background:#f1f5f9;padding:20px;border-radius:8px;} a{display:inline-block;margin-top:15px;color:#0284c7;text-decoration:none;font-weight:bold;}</style></head><body><div class='box'>";
+    echo "<!DOCTYPE html><html lang='it'><head><meta name='viewport' content='width=device-width, initial-scale=1.0'><style>body{font-family:sans-serif;padding:20px;text-align:center;} .box{background:#f1f5f9;padding:20px;border-radius:8px;} pre{text-align:left;background:#e2e8f0;padding:10px;border-radius:4px;overflow-x:auto;}</style></head><body><div class='box'>";
 
     if ($http_code === 200) {
-        echo "<h3 style='color:#16a34a;'>✅ Richiesta Inviata!</h3>";
-        echo "<p>La ferie per il giorno <strong>$data_inserita</strong> è stata registrata su MySpriss.</p>";
+        echo "<h3 style='color:#16a34a;'>✅ Richiesta Inviata con Successo!</h3>";
+        echo "<p>Data richiesta: <strong>$data_inserita</strong></p>";
+        echo "<p>Risposta server: <code>$response</code></p>";
     } else {
-        echo "<h3 style='color:#dc2626;'>❌ Errore ($http_code)</h3>";
-        echo "<p>Impossibile completare la richiesta. Il token potrebbe essere scaduto.</p>";
+        echo "<h3 style='color:#dc2626;'>❌ Errore HTTP: $http_code</h3>";
+        echo "<p>URL contattato: <code>$effective_url</code></p>";
+        if ($curl_error) {
+            echo "<p><strong>Errore cURL:</strong> $curl_error</p>";
+        }
+        echo "<p><strong>Risposta dal server:</strong></p>";
+        echo "<pre>" . htmlspecialchars($response) . "</pre>";
     }
 
-    echo "<a href='index.html'>← Torna indietro</a>";
+    echo "<br><a href='index.html'>← Torna indietro</a>";
     echo "</div></body></html>";
 } else {
     header("Location: index.html");
