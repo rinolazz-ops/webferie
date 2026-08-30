@@ -3,58 +3,86 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MySpriss - Richiesta Rapida Ferie</title>
+    <title>MySpriss - Automatizzazione Ferie</title>
     <style>
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: #f4f6f9;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #f1f5f9;
             margin: 0;
-            padding: 20px;
+            padding: 16px;
             display: flex;
             justify-content: center;
         }
         .card {
-            background: white;
+            background: #ffffff;
             padding: 24px;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            border-radius: 16px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.08);
             width: 100%;
-            max-width: 400px;
+            max-width: 420px;
         }
         h2 {
             margin-top: 0;
-            color: #1e293b;
+            color: #0f172a;
             font-size: 20px;
             text-align: center;
         }
+        .form-group {
+            margin-bottom: 16px;
+        }
         label {
             font-weight: 600;
-            color: #475569;
+            color: #334155;
             display: block;
-            margin-bottom: 8px;
+            margin-bottom: 6px;
+            font-size: 14px;
         }
-        input[type="date"] {
+        input[type="date"], input[type="time"] {
             width: 100%;
             padding: 12px;
             border: 1px solid #cbd5e1;
             border-radius: 8px;
             font-size: 16px;
             box-sizing: border-box;
-            margin-bottom: 16px;
+            background-color: #f8fafc;
+        }
+        .btn-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 20px;
         }
         button {
             width: 100%;
-            background-color: #0284c7;
-            color: white;
-            border: none;
             padding: 14px;
             border-radius: 8px;
-            font-size: 16px;
+            font-size: 15px;
             font-weight: bold;
+            border: none;
             cursor: pointer;
         }
-        button:active {
-            background-color: #0369a1;
+        .btn-now {
+            background-color: #0284c7;
+            color: white;
+        }
+        .btn-schedule {
+            background-color: #16a34a;
+            color: white;
+        }
+        #timer-box {
+            display: none;
+            margin-top: 20px;
+            padding: 16px;
+            background-color: #eff6ff;
+            border: 1px solid #bfdbfe;
+            border-radius: 8px;
+            text-align: center;
+        }
+        #countdown {
+            font-size: 22px;
+            font-weight: bold;
+            color: #1d4ed8;
+            margin-top: 6px;
         }
     </style>
 </head>
@@ -62,12 +90,85 @@
 
 <div class="card">
     <h2>Richiesta Ferie MySpriss</h2>
-    <form action="invia.php" method="POST">
-        <label for="data_ferie">Data per le Ferie:</label>
-        <input type="date" id="data_ferie" name="data_ferie" required>
-        <button type="submit">Invia Richiesta Ferie</button>
+    
+    <form id="ferieForm" action="invia.php" method="POST">
+        <!-- 1. DATA DELLE FERIE RICHIESTE -->
+        <div class="form-group">
+            <label for="data_ferie">Data Ferie Desiderata:</label>
+            <input type="date" id="data_ferie" name="data_ferie" required>
+        </div>
+
+        <!-- 2. ORA E MINUTO DI ESECUZIONE (Default 22:00) -->
+        <div class="form-group">
+            <label for="ora_invio">Ora Invio Automatico (es. 22:00:00):</label>
+            <input type="time" id="ora_invio" value="22:00" step="1">
+        </div>
+
+        <div class="btn-group">
+            <button type="submit" class="btn-now">🚀 Invia Adesso (Immediato)</button>
+            <button type="button" class="btn-schedule" onclick="avviaProgrammazione()">⏰ Programma Invio Automatico</button>
+        </div>
     </form>
+
+    <!-- BOX CONTO ALLA ROVESCIA -->
+    <div id="timer-box">
+        <div style="font-size:13px; color:#1e40af;">In attesa dell'ora esatta...</div>
+        <div id="countdown">00:00:00</div>
+        <div style="font-size:11px; color:#64748b; margin-top:4px;">Non chiudere la pagina del browser</div>
+    </div>
 </div>
+
+<script>
+    // Calcola e imposta automaticamente come suggerimento la data di 30 giorni da oggi
+    const oggi = new Date();
+    const data30Giorni = new Date();
+    data30Giorni.setDate(oggi.getDate() + 30);
+    document.getElementById('data_ferie').value = data30Giorni.toISOString().split('T')[0];
+
+    let timerInterval = null;
+
+    function avviaProgrammazione() {
+        const dataFerie = document.getElementById('data_ferie').value;
+        const oraInvio = document.getElementById('ora_invio').value;
+
+        if (!dataFerie) {
+            alert("Seleziona prima la data delle ferie!");
+            return;
+        }
+
+        const [ore, minuti, secondi] = oraInvio.split(':').map(Number);
+        
+        // Target time: Oggi all'ora specificata (es: stasera ore 22:00:00)
+        let targetDate = new Date();
+        targetDate.setHours(ore, minuti, secondi || 0, 0);
+
+        // Se l'ora di oggi è già passata, programma per domani alle 22:00
+        if (targetDate <= new Date()) {
+            targetDate.setDate(targetDate.getDate() + 1);
+        }
+
+        document.getElementById('timer-box').style.display = 'block';
+
+        if (timerInterval) clearInterval(timerInterval);
+
+        timerInterval = setInterval(() => {
+            const adesso = new Date();
+            const differenza = targetDate - adesso;
+
+            if (differenza <= 0) {
+                clearInterval(timerInterval);
+                document.getElementById('countdown').innerText = "INVIO IN CORSO...";
+                // Invia il form automaticamente al server
+                document.getElementById('ferieForm').submit();
+            } else {
+                const h = String(Math.floor(differenza / (1000 * 60 * 60))).padStart(2, '0');
+                const m = String(Math.floor((differenza % (1000 * 60 * 60)) / (1000 * 60))).padStart(2, '0');
+                const s = String(Math.floor((differenza % (1000 * 60)) / 1000)).padStart(2, '0');
+                document.getElementById('countdown').innerText = `${h}:${m}:${s}`;
+            }
+        }, 200);
+    }
+</script>
 
 </body>
 </html>
