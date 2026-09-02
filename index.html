@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MySpriss - Gestione Ferie</title>
+<style>
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background-color: #f1f5f9;
+  margin: 0;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+.card {
+  background: #ffffff;
+  padding: 24px;
+  border-radius: 16px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+  width: 100%;
+  max-width: 440px;
+  box-sizing: border-box;
+}
+h2 {
+  margin-top: 0;
+  color: #0f172a;
+  font-size: 20px;
+  text-align: center;
+}
+.notice {
+  background-color: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #92400e;
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  margin-bottom: 20px;
+}
+.form-group {
+  margin-bottom: 16px;
+}
+label {
+  font-weight: 600;
+  color: #334155;
+  display: block;
+  margin-bottom: 6px;
+  font-size: 14px;
+}
+input[type="date"], input[type="password"] {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 16px;
+  box-sizing: border-box;
+  background-color: #f8fafc;
+}
+button {
+  width: 100%;
+  padding: 14px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: bold;
+  border: none;
+  cursor: pointer;
+  color: white;
+  margin-top: 8px;
+}
+.btn-primary { background-color: #0284c7; }
+.btn-secondary { background-color: #475569; }
+#lista_date {
+  margin-top: 16px;
+}
+.data-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+.data-item button {
+  width: auto;
+  margin-top: 0;
+  padding: 6px 10px;
+  font-size: 13px;
+  background-color: #dc2626;
+}
+</style>
+</head>
+<body>
+
+<div class="card">
+  <h2>📅 Date Ferie Desiderate</h2>
+  <div class="notice">
+    Il token GitHub qui sotto NON viene salvato: lo incolli ogni volta che vuoi gestire l'elenco.
+    Serve un Personal Access Token con permesso "Contents: Read and write" sul solo repo <code>webferie</code>.
+  </div>
+
+  <div class="form-group">
+    <label for="gh_token">Token GitHub:</label>
+    <input type="password" id="gh_token" autocomplete="off">
+  </div>
+  <button class="btn-secondary" onclick="caricaDate()">🔄 Carica elenco attuale</button>
+
+  <div id="lista_date"></div>
+
+  <div class="form-group" style="margin-top:20px;">
+    <label for="nuova_data">Aggiungi nuova data ferie:</label>
+    <input type="date" id="nuova_data">
+  </div>
+  <button class="btn-primary" onclick="aggiungiData()">➕ Aggiungi data</button>
+</div>
+
+<div class="card">
+  <h2>🧪 Test Manuale Invio</h2>
+  <div class="notice">
+    Solo per test: invia subito una richiesta per la data scelta, senza aspettare le 22:00.
+    L'invio automatico giornaliero lo fa comunque la GitHub Action, in base all'elenco qui sopra.
+  </div>
+  <form action="invia.php" method="POST">
+    <div class="form-group">
+      <label for="data_ferie">Data Ferie:</label>
+      <input type="date" id="data_ferie" name="data_ferie" required>
+    </div>
+    <div class="form-group">
+      <label for="jwt_token">Token JWT (da DevTools):</label>
+      <input type="password" id="jwt_token" name="jwt_token" required autocomplete="off">
+    </div>
+    <button type="submit" class="btn-primary">🚀 Invia Ora (Test)</button>
+  </form>
+</div>
+
+<script>
+const GITHUB_OWNER = 'rinolazz-ops';
+const GITHUB_REPO = 'webferie';
+const FILE_PATH = 'date-ferie.json';
+
+let ghSha = null;
+let ghDates = [];
+
+async function caricaDate() {
+  const token = document.getElementById('gh_token').value.trim();
+  const lista = document.getElementById('lista_date');
+  if (!token) { alert('Inserisci il token GitHub'); return; }
+
+  lista.innerHTML = '<p>Caricamento...</p>';
+  try {
+    const res = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${FILE_PATH}`, {
+      headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github+json' }
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || ('HTTP ' + res.status));
+    }
+    const data = await res.json();
+    const contenuto = JSON.parse(decodeURIComponent(escape(atob(data.content))));
+    ghSha = data.sha;
+    ghDates = contenuto.date || [];
+    renderLista();
+  } catch (e) {
+    lista.innerHTML = '<p style="color:#dc2626;">Errore nel caricamento: ' + e.message + '</p>';
+  }
+}
+
+function renderLista() {
+  const lista = document.getElementById('lista_date');
+  lista.innerHTML = '';
+  if (ghDates.length === 0) {
+    lista.innerHTML = '<p style="color:#64748b;">Nessuna data ferie impostata.</p>';
+    return;
+  }
+  [...ghDates].sort().forEach(d => {
+    const div = document.createElement('div');
+    div.className = 'data-item';
+    div.innerHTML = `<span>${d}</span>`;
+    const btn = document.createElement('button');
+    btn.textContent = '🗑️ Rimuovi';
+    btn.onclick = () => rimuoviData(d);
+    div.appendChild(btn);
+    lista.appendChild(div);
+  });
+}
+
+async function salvaDate(messaggioCommit) {
+  const token = document.getElementById('gh_token').value.trim();
+  const nuovoContenuto = JSON.stringify({ date: [...ghDates].sort() }, null, 2);
+  const res = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${FILE_PATH}`, {
+    method: 'PUT',
+    headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github+json' },
+    body: JSON.stringify({
+      message: messaggioCommit,
+      content: btoa(unescape(encodeURIComponent(nuovoContenuto))),
+      sha: ghSha
+    })
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || ('HTTP ' + res.status));
+  }
+  const data = await res.json();
+  ghSha = data.content.sha;
+}
+
+async function aggiungiData() {
+  if (!ghSha) { alert('Prima clicca "Carica elenco attuale"'); return; }
+  const nuovaData = document.getElementById('nuova_data').value;
+  if (!nuovaData) { alert('Scegli una data'); return; }
+  if (ghDates.includes(nuovaData)) { alert('Data già presente'); return; }
+
+  ghDates.push(nuovaData);
+  try {
+    await salvaDate(`Aggiunta data ferie: ${nuovaData}`);
+    renderLista();
+    document.getElementById('nuova_data').value = '';
+  } catch (e) {
+    ghDates = ghDates.filter(x => x !== nuovaData);
+    alert('Errore nel salvataggio: ' + e.message);
+  }
+}
+
+async function rimuoviData(d) {
+  if (!ghSha) { alert('Prima clicca "Carica elenco attuale"'); return; }
+  const precedente = [...ghDates];
+  ghDates = ghDates.filter(x => x !== d);
+  try {
+    await salvaDate(`Rimossa data ferie: ${d}`);
+    renderLista();
+  } catch (e) {
+    ghDates = precedente;
+    alert('Errore nel salvataggio: ' + e.message);
+  }
+}
+</script>
+
+</body>
+</html>
