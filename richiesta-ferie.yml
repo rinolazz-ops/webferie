@@ -1,0 +1,25 @@
+name: Richiesta Ferie Automatica
+
+on:
+  schedule:
+    - cron: '50 19 * * *'   # 21:50 ora legale italiana (CEST, UTC+2) — 10 min di anticipo
+    - cron: '50 20 * * *'   # 21:50 ora solare italiana (CET, UTC+1) — 10 min di anticipo
+  workflow_dispatch:
+    inputs:
+      forza:
+        description: 'Salta il controllo orario (solo per test manuali)'
+        type: boolean
+        default: false
+
+jobs:
+  invia-richiesta:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Invia richiesta ferie
+        env:
+          MYSPRISS_JWT: ${{ secrets.MYSPRISS_JWT }}
+          FORZA: ${{ github.event.inputs.forza }}
+        run: bash invia_ferie.sh
